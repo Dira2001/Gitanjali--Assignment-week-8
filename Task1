@@ -1,0 +1,42 @@
+# Import necessary libraries
+import dbutils
+
+# Mount the S3 bucket
+dbutils.fs.mount(
+  source = "s3a://nyc-tlc/trip+data/",
+  mount_point = "/mnt/nyc-tlc/",
+  extra_configs = {"fs.s3a.endpoint": "s3.amazonaws.com"}
+)
+
+# Load the dataset into a DataFrame
+df = spark.read.csv("/mnt/nyc-tlc/yellow_tripdata_2020-01.csv", header=True, inferSchema=True)
+# Write the DataFrame to an external Parquet table
+df.write.parquet("/mnt/nyc-tlc/yellow_tripdata_2020-01_parquet")
+# Add a new column "Revenue"
+from pyspark.sql.functions import col
+
+df = df.withColumn("Revenue", col("Fare_amount") + col("Extra") + col("MTA_tax") + col("Improvement_surcharge") + col("Tip_amount") + col("Tolls_amount") + col("Total_amount"))
+# Aggregate the data by area and count the total passengers
+from pyspark.sql.functions import count
+
+area_passengers = df.groupBy("PULocationID").agg(count("passenger_count").alias("total_passengers"))
+# Aggregate the data by vendor and calculate the average fare and total earning amount
+from pyspark.sql.functions import avg, sum
+
+vendor_earnings = df.groupBy("VendorID").agg(avg("Fare_amount").alias("avg_fare"), sum("Revenue").alias("total_earnings"))
+# Aggregate the data by payment mode and count the number of payments
+from pyspark.sql.functions import count
+
+payment_counts = df.groupBy("payment_type").agg(count("payment_type").alias("payment_count"))
+# Aggregate the data by vendor and date, and calculate the total distance and number of passengers
+from pyspark.sql.functions import sum, count
+
+vendor_daily_earnings = df.groupBy("VendorID", "tpep_pickup_datetime").agg(sum("trip_distance").alias("total_distance"), count("passenger_count").alias("total_passengers"))
+# Aggregate the data by route and count the number of passengers
+from pyspark.sql.functions import count
+
+route_passengers = df.groupBy("PULocationID", "DOLocationID").agg(count("passenger_count").alias("total_passengers"))
+# Filter the data by time and aggregate the data by pickup location
+from pyspark.sql.functions import count
+
+top_pickup_locations = df.filter(df.tpep_pickup_datetime >= "2020-01-01 00:00:00").groupBy("PULocationID").agg(count("passenger_count").alias("total_passengers"))
